@@ -1,0 +1,64 @@
+version: "3.8"
+
+services:
+  nginx:
+    image: nginx:1.24-alpine
+    container_name: doc-preview-nginx
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./web-component/dist:/usr/share/nginx/html:ro
+      - ./demo:/usr/share/nginx/html/demo:ro
+      - doc-storage:/data/documents:ro
+    depends_on:
+      - server
+      - onlyoffice
+    restart: unless-stopped
+    networks:
+      - doc-net
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: doc-preview-server
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=${SERVER_PORT:-3000}
+      - STORAGE_PATH=${STORAGE_PATH:-/data/documents}
+      - ONLYOFFICE_URL=http://onlyoffice:80
+      - JWT_SECRET=${JWT_SECRET}
+      - PUBLIC_URL=http://nginx
+    volumes:
+      - doc-storage:/data/documents
+      - db-data:/data/db
+    restart: unless-stopped
+    networks:
+      - doc-net
+
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    container_name: doc-preview-onlyoffice
+    environment:
+      - JWT_ENABLED=true
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_HEADER=Authorization
+    volumes:
+      - oo-data:/var/www/onlyoffice/Data
+      - oo-logs:/var/log/onlyoffice
+      - ./scripts/fonts:/usr/share/fonts/custom:ro
+    restart: unless-stopped
+    networks:
+      - doc-net
+
+volumes:
+  doc-storage:
+  db-data:
+  oo-data:
+  oo-logs:
+
+networks:
+  doc-net:
+    driver: bridge
